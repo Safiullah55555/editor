@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Offline DOCX Editor – Exports DOCX & PDF</title>
+  <!-- Tailwind for quick styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- TinyMCE (self‑hosted) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/7.6.1/tinymce.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/7.6.1/icons/default/icons.min.js"></script>
+
+  <!-- Mammoth.js for DOCX → HTML -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.9.0/mammoth.browser.min.js"></script>
+
+  <!-- ✅ html-docx-js 0.3.1 for HTML → DOCX (this version is known to work in browsers) -->
+  <script src="https://cdn.jsdelivr.net/npm/html-docx-js@0.3.1/dist/html-docx.js"></script>
+
+  <!-- jsPDF + html2canvas + DOMPurify for PDF export -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/3.0.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.2.6/purify.min.js"></script>
+
+  <style>html,body{height:100%;margin:0}</style>
+</head>
+<body class="min-h-screen flex flex-col items-center bg-slate-50 p-6">
+  <div class="w-full max-w-4xl flex flex-col bg-white rounded shadow-lg overflow-hidden">
+    <header class="p-4 bg-indigo-600 text-white flex justify-between items-center">
+      <h1 class="text-xl font-bold">DOCX Editor – Offline Export Fix</h1>
+      <div class="space-x-2">
+        <input type="file" id="fileInput" accept=".docx" hidden>
+        <button id="btnImport" class="px-3 py-1 bg-indigo-200 text-indigo-800 rounded">Import DOCX</button>
+        <button id="btnExportDocx" class="px-3 py-1 bg-green-200 text-green-800 rounded hidden">Export DOCX</button>
+        <button id="btnExportPdf" class="px-3 py-1 bg-blue-200 text-blue-800 rounded hidden">Export PDF</button>
+        <button id="btnClear" class="px-3 py-1 bg-red-200 text-red-800 rounded">Clear</button>
+      </div>
+    </header>
+    <textarea id="editor" class="hidden" style="flex:1;"></textarea>
+  </div>
+  <footer class="mt-4 text-gray-500 text-sm">100% client‑side: TinyMCE • Mammoth.js • html‑docx‑js • jsPDF</footer>
+
+  <script>
+    window.addEventListener('load', () => {
+      // Ensure htmlDocx is loaded
+      if (typeof window.htmlDocx === 'undefined') {
+        alert('html-docx-js failed to load — check CDN connectivity.');
+      }
+
+      /* ---------- TinyMCE ---------- */
+      tinymce.init({
+        selector: '#editor',
+        height: 500,
+        menubar: false,
+        plugins: 'lists link image table code help',
+        toolbar: 'undo redo | formatselect | bold italic underline | bullist numlist | alignleft aligncenter alignright | link table | code',
+        content_style: 'body{font-family:Arial,sans-serif;font-size:16px}',
+        setup: ed => ed.on('init', () => document.getElementById('editor').classList.remove('hidden'))
+      });
+
+      const fileInput = document.getElementById('fileInput');
+      const btnImport = document.getElementById('btnImport');
+      const btnDocx   = document.getElementById('btnExportDocx');
+      const btnPdf    = document.getElementById('btnExportPdf');
+      const btnClear  = document.getElementById('btnClear');
+
+      btnImport.onclick = () => fileInput.click();
+
+      /* ---------- Import DOCX ---------- */
+      fileInput.addEventListener('change', async e => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const buf = await file.arrayBuffer();
+        tinymce.activeEditor.setContent('<p><em>Loading…</em></p>');
+        mammoth.convertToHtml({ arrayBuffer: buf }).then(({ value }) => {
+          tinymce.activeEditor.setContent(value);
+          btnDocx.classList.remove('hidden');
+          btnPdf.classList.remove('hidden');
+        }).catch(err => alert('Import error: ' + err.message));
+      });
+
+      /* ---------- Export DOCX ---------- */
+      btnDocx.onclick = () => {
+        if (!window.htmlDocx) {
+          alert('html-docx-js is missing, cannot export DOCX.');
+          return;
+        }
+        const htmlContent = tinymce.activeEditor.getContent();
+        const fullHtml = `<!DOCTYPE html><html><head><meta charset='utf-8'></head><body>${htmlContent}</body></html>`;
+        const blob = window.htmlDocx.asBlob(fullHtml);
+        download(blob, 'edited.docx');
+      };
+
+      /* ---------- Export PDF ---------- */
+      btnPdf.onclick = () => {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+        doc.html(tinymce.activeEditor.getContent(), {
+          callback: () => doc.save('edited.pdf'),
+          x: 40,
+          y: 40,
+          width: 515
+        });
+      };
+
+      /* ---------- Clear ---------- */
+      btnClear.onclick = () => {
+        tinymce.activeEditor.setContent('');
+        btnDocx.classList.add('hidden');
+        btnPdf.classList.add('hidden');
+      };
+
+      function download(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }
+    });
+  </script>
+</body>
+</html>
